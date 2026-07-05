@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Response
 from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 import uuid
@@ -11,20 +11,19 @@ WINDOW_SECONDS = 10
 
 app = FastAPI()
 
-# -----------------------------
-# CORS Middleware
-# -----------------------------
+# --------------------------------------------------
+# CORS
+# --------------------------------------------------
 @app.middleware("http")
 async def cors_middleware(request: Request, call_next):
-
-    origin = request.headers.get("origin")
+    origin = request.headers.get("Origin")
 
     if request.method == "OPTIONS":
-        response = JSONResponse({"ok": True})
+        response = Response(status_code=200)
 
         if origin:
             response.headers["Access-Control-Allow-Origin"] = origin
-            response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+            response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
             response.headers["Access-Control-Allow-Headers"] = "*"
             response.headers["Access-Control-Allow-Credentials"] = "true"
 
@@ -34,20 +33,19 @@ async def cors_middleware(request: Request, call_next):
 
     if origin:
         response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
         response.headers["Access-Control-Allow-Headers"] = "*"
         response.headers["Access-Control-Allow-Credentials"] = "true"
 
     return response
 
-# -----------------------------
-# Rate Limiter
-# -----------------------------
+# --------------------------------------------------
+# Rate Limiting Middleware
+# --------------------------------------------------
 buckets = {}
 
 class RateLimitMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
-
         client_id = request.headers.get("X-Client-Id")
 
         if client_id:
@@ -70,42 +68,38 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
 
         return await call_next(request)
 
-# -----------------------------
-# Request Context Middleware
-# -----------------------------
-class RequestContextMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-
-        request_id = request.headers.get("X-Request-ID")
-
-        if not request_id:
-            request_id = str(uuid.uuid4())
-
-        request.state.request_id = request_id
-
-        response = await call_next(request)
-
-        response.headers["X-Request-ID"] = request_id
-
-        return response
-
-app.add_middleware(RequestContextMiddleware)
 app.add_middleware(RateLimitMiddleware)
 
-# -----------------------------
-# Ping Endpoint
-# -----------------------------
+# --------------------------------------------------
+# GET /ping
+# --------------------------------------------------
 @app.get("/ping")
-async def ping(request: Request):
+async def ping(request: Request, response: Response):
+
+    request_id = request.headers.get("X-Request-ID")
+
+    if not request_id:
+        request_id = str(uuid.uuid4())
+
+    # Echo in response header
+    response.headers["X-Request-ID"] = request_id
+
+    # Echo in response body
     return {
         "email": EMAIL,
-        "request_id": request.state.request_id
+        "request_id": request_id
     }
 
+# --------------------------------------------------
+# OPTIONS /ping (preflight)
+# --------------------------------------------------
 @app.options("/ping")
 async def ping_options():
-    return {"ok": True}
+    return Response(status_code=200)
 
+# --------------------------------------------------
+# Root
+# --------------------------------------------------
 @app.get("/")
 async def root():
     return {"status": "ok"}
