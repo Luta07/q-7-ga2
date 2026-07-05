@@ -9,16 +9,51 @@ EMAIL = "24f3004361@ds.study.iitm.ac.in"
 RATE_LIMIT = 14
 WINDOW_SECONDS = 10
 
+# Per-client rate limit storage
 buckets = {}
 
+# ----------------------------
+# CORS Middleware
+# ----------------------------
 @app.middleware("http")
-async def rate_limit(request: Request, call_next):
+async def cors_middleware(request: Request, call_next):
+    origin = request.headers.get("Origin")
+
+    # Handle preflight requests
+    if request.method == "OPTIONS":
+        response = Response(status_code=200)
+
+        if origin:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            response.headers["Access-Control-Allow-Credentials"] = "true"
+
+        return response
+
+    response = await call_next(request)
+
+    if origin:
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+
+    return response
+
+# ----------------------------
+# Rate Limiting Middleware
+# ----------------------------
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
     client_id = request.headers.get("X-Client-Id")
 
     if client_id:
         now = time.time()
 
         bucket = buckets.setdefault(client_id, [])
+
+        # Keep only timestamps within last 10 seconds
         bucket[:] = [t for t in bucket if now - t < WINDOW_SECONDS]
 
         if len(bucket) >= RATE_LIMIT:
@@ -31,14 +66,16 @@ async def rate_limit(request: Request, call_next):
 
     return await call_next(request)
 
+# ----------------------------
+# OPTIONS /ping
+# ----------------------------
 @app.options("/ping")
 async def options_ping():
-    response = Response(status_code=200)
-    response.headers["Access-Control-Allow-Origin"] = "https://app-11q3ur.example.com"
-    response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "*"
-    return response
+    return Response(status_code=200)
 
+# ----------------------------
+# GET /ping
+# ----------------------------
 @app.get("/ping")
 async def ping(request: Request):
     request_id = request.headers.get("X-Request-ID")
@@ -53,18 +90,14 @@ async def ping(request: Request):
         }
     )
 
-    # Explicitly set header on the final response object
+    # Echo request id in response header
     response.headers["X-Request-ID"] = request_id
-
-    origin = request.headers.get("Origin")
-
-    if origin:
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS"
 
     return response
 
+# ----------------------------
+# Root endpoint
+# ----------------------------
 @app.get("/")
 async def root():
     return {"status": "ok"}
