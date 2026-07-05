@@ -5,7 +5,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 import uuid
 import time
 
-EMAIL = "YOUR_EMAIL@example.com"
+EMAIL = "24f3004361@ds.study.iitm.ac.in"
 
 ALLOWED_ORIGIN = "https://app-11q3ur.example.com"
 RATE_LIMIT = 14
